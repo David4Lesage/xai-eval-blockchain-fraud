@@ -1,0 +1,44 @@
+cff-version: 1.2.0
+message: "If you use this software in your research, please cite it as below."
+title: "XAI Evaluation Framework for Blockchain Fraud Detection"
+abstract: >-
+  A reproducible, multi-dimensional framework for evaluating explainable AI
+  methods applied to blockchain fraud detection, structured around four
+  complementary modules: fidelity, stability, blockchain rule alignment, and
+  LLM-agent validation.
+authors:
+  - family-names: "Oumbe Fokou"
+    given-names: "David Le Sage"
+    affiliation: "Université du Québec à Chicoutimi"
+    email: "dlofokou@etu.uqac.ca"
+  - family-names: "Salhab"
+    given-names: "Wissam"
+    affiliation: "Université du Québec à Chicoutimi"
+    email: "wsalhab@etu.uqac.ca"
+  - family-names: "Jaafar"
+    given-names: "Fehmi"
+    affiliation: "Université du Québec à Chicoutimi"
+    email: "fjaafar@uqac.ca"
+license: MIT
+repository-code: "https://github.com/<your-username>/xai-eval-blockchain-fraud"
+keywords:
+  - "explainable AI"
+  - "blockchain"
+  - "fraud detection"
+  - "evaluation framework"
+  - "LLM agents"
+  - "trust and reliability"
+preferred-citation:
+  type: generic
+  title: >-
+    Beyond Predictive Metrics: A Multi-Dimensional Framework for XAI
+    Evaluation in Blockchain Fraud Detection
+  authors:
+    - family-names: "Oumbe Fokou"
+      given-names: "David Le Sage"
+    - family-names: "Salhab"
+      given-names: "Wissam"
+    - family-names: "Jaafar"
+      given-names: "Fehmi"
+  year: 2026
+  notes: "Preprint, under review"
