@@ -120,16 +120,17 @@ def infidelity(
     sigma: float = 0.1,
     rng: np.random.Generator | None = None,
 ) -> float:
-    """Infidelity score.
+    """Infidelity score (Yeh et al., 2019).
 
-    For each instance, apply ``n_perturbations`` Gaussian perturbations of
-    standard deviation ``sigma`` to the input and compare:
+    For each instance and perturbation ``I``, compare:
 
-    - the model's actual output change, and
-    - the change predicted by the linear approximation ``attribution · delta``.
+    - the model's observed change under the perturbation,
+      ``f(x) - f(x - I)``, and
+    - the change predicted by the linear approximation, ``I · attr``.
 
-    The score is the mean squared difference between these two quantities.
-    A faithful explanation makes these two values agree for small deltas.
+    The score is the mean squared difference
+    ``(I · attr - (f(x) - f(x - I)))**2``. A faithful explanation makes
+    these two quantities agree for small ``I``.
 
     Parameters
     ----------
@@ -157,10 +158,10 @@ def infidelity(
         perturbations = rng.normal(0.0, sigma, size=(n_perturbations, x.shape[0]))
 
         f_x = predict_proba(x[None, :])[0]
-        f_xp = predict_proba(x[None, :] + perturbations)
+        f_xp = predict_proba(x[None, :] - perturbations)
         model_delta = f_x - f_xp
         expl_delta = perturbations @ attr
-        scores.append(float(np.mean((model_delta - expl_delta) ** 2)))
+        scores.append(float(np.mean((expl_delta - model_delta) ** 2)))
 
     return float(np.mean(scores))
 

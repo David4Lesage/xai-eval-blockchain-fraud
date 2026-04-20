@@ -20,6 +20,15 @@ class ShapTreeExplainer:
         self.model = model
         self._explainer = shap.TreeExplainer(model)
 
+    @property
+    def expected_value(self) -> float:
+        """Expected model output for the positive class (SHAP base value)."""
+        raw = self._explainer.expected_value
+        if isinstance(raw, (list, np.ndarray)):
+            arr = np.asarray(raw).flatten()
+            return float(arr[1] if len(arr) > 1 else arr[0])
+        return float(raw)
+
     def explain(
         self,
         X: NDArray[np.float64],
@@ -40,7 +49,11 @@ class ShapTreeExplainer:
             Array of shape ``(len(indices), n_features)``.
         """
         subset = X if indices is None else X[np.asarray(indices)]
-        raw = self._explainer.shap_values(subset)
+        # ``check_additivity=False`` matches the reference research
+        # implementation: additivity checks are disabled so that scikit-learn
+        # RandomForest models (which sometimes fail the internal tolerance)
+        # do not raise on valid inputs.
+        raw = self._explainer.shap_values(subset, check_additivity=False)
         # Different shap versions return either a list (one array per class)
         # or a single 3-D array. Extract the positive-class slice.
         if isinstance(raw, list):

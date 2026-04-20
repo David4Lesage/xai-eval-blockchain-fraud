@@ -12,10 +12,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import joblib
 import numpy as np
+import pandas as pd
 from lightgbm import LGBMClassifier
 from numpy.typing import NDArray
 from sklearn.ensemble import RandomForestClassifier
@@ -25,6 +26,7 @@ from sklearn.metrics import (
     confusion_matrix,
     f1_score,
     matthews_corrcoef,
+    precision_recall_curve,
     precision_score,
     recall_score,
     roc_auc_score,
@@ -128,9 +130,13 @@ def train_lightgbm(
 def find_optimal_threshold(
     y_true: NDArray[np.int64],
     probs: NDArray[np.float64],
-    grid_step: float = 0.01,
 ) -> tuple[float, float]:
-    """Grid-search the decision threshold that maximizes F1.
+    """Return the decision threshold that maximizes F1.
+
+    Thresholds are drawn from the scikit-learn precision-recall curve, which
+    gives one candidate per distinct predicted probability (rather than a
+    fixed grid). This matches the reference research implementation and is
+    generally more precise than a 0.01 step grid.
 
     Parameters
     ----------
@@ -138,22 +144,18 @@ def find_optimal_threshold(
         Binary ground-truth labels.
     probs : numpy.ndarray
         Predicted fraud probabilities.
-    grid_step : float, default 0.01
-        Step size of the threshold grid over ``(0, 1)``.
 
     Returns
     -------
-    tuple
+    tuple of float
         ``(best_threshold, best_f1)``.
     """
-    thresholds = np.arange(grid_step, 1.0, grid_step)
-    best_t, best_f1 = 0.5, -1.0
-    for t in thresholds:
-        pred = (probs >= t).astype(int)
-        f1 = f1_score(y_true, pred, zero_division=0)
-        if f1 > best_f1:
-            best_t, best_f1 = float(t), float(f1)
-    return best_t, best_f1
+    pr, rc, thresholds = precision_recall_curve(y_true, probs)
+    denom = pr + rc
+    f1 = np.where(denom > 0, 2 * pr * rc / denom, 0.0)
+    # precision_recall_curve returns len(thresholds) == len(pr) - 1.
+    idx = int(np.argmax(f1[:-1])) if len(f1) > 1 else 0
+    return float(thresholds[idx]), float(f1[idx])
 
 
 def evaluate_ml(
@@ -188,6 +190,47 @@ def evaluate_ml(
     )
 
 
+def compute_metrics(
+    y_true: NDArray[np.int64],
+    y_proba: NDArray[np.float64],
+    threshold: float = 0.5,
+) -> dict[str, float]:
+    """Compute the standard binary-classification metrics as a plain dict.
+
+    Mirrors the dict format used throughout the research notebooks. Prefer
+    :func:`evaluate_ml` when you also need an automatic threshold search.
+
+    Parameters
+    ----------
+    y_true : numpy.ndarray
+        Binary ground-truth labels.
+    y_proba : numpy.ndarray
+        Predicted fraud probabilities.
+    threshold : float, default 0.5
+        Decision threshold on ``y_proba``.
+
+    Returns
+    -------
+    dict
+        Keys: Accuracy, Precision, Recall, F1, ROC-AUC, PR-AUC, MCC, FPR,
+        Threshold.
+    """
+    y_pred = (y_proba >= threshold).astype(int)
+    tn, fp, _, _ = confusion_matrix(y_true, y_pred, labels=[0, 1]).ravel()
+    fpr = float(fp / (fp + tn)) if (fp + tn) > 0 else 0.0
+    return {
+        "Accuracy": float(accuracy_score(y_true, y_pred)),
+        "Precision": float(precision_score(y_true, y_pred, zero_division=0)),
+        "Recall": float(recall_score(y_true, y_pred, zero_division=0)),
+        "F1": float(f1_score(y_true, y_pred, zero_division=0)),
+        "ROC-AUC": float(roc_auc_score(y_true, y_proba)),
+        "PR-AUC": float(average_precision_score(y_true, y_proba)),
+        "MCC": float(matthews_corrcoef(y_true, y_pred)),
+        "FPR": fpr,
+        "Threshold": float(threshold),
+    }
+
+
 def save_ml_model(model: RandomForestClassifier | LGBMClassifier, path: Path | str) -> Path:
     """Serialize a fitted model with joblib."""
     path = Path(path)
@@ -203,3 +246,31 @@ def load_ml_model(path: Path | str) -> RandomForestClassifier | LGBMClassifier:
     model = joblib.load(path)
     print(f"  read  {path.name}")
     return model
+
+
+def make_fraud_predict_fn(
+    model: RandomForestClassifier | LGBMClassifier,
+    n_features: int,
+) -> Callable[[NDArray[np.float64]], NDArray[np.float64]]:
+    """Wrap ``model.predict_proba`` to return fraud probability only.
+
+    The wrapper also re-attaches column names to numpy input arrays so that
+    scikit-learn and LightGBM do not emit ``UserWarning`` about missing
+    feature names on every call. It returns an array of shape ``(n,)`` with
+    the probability of the positive class, which is the signature expected by
+    every metric in :mod:`xai_blockchain_framework.metrics`.
+    """
+    feat_names = [f"f{i}" for i in range(n_features)]
+    try:
+        feat_names = list(model.feature_names_in_)
+    except AttributeError:
+        try:
+            feat_names = list(model.feature_name_)
+        except AttributeError:
+            pass
+
+    def predict(X: NDArray[np.float64]) -> NDArray[np.float64]:
+        df = pd.DataFrame(X, columns=feat_names)
+        return model.predict_proba(df)[:, 1]
+
+    return predict

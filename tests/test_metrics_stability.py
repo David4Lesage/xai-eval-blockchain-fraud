@@ -30,7 +30,11 @@ class TestLipschitz:
 class TestKendallTau:
     def test_identical_rankings_give_one(self) -> None:
         same = np.array([[5.0, 4.0, 3.0, 2.0, 1.0]] * 5)
-        assert rank_stability_kendall(same) == 1.0
+        # scipy.stats.kendalltau can return 1 - eps on identical rank vectors
+        # due to internal floating-point arithmetic; treat near-1.0 as pass.
+        assert rank_stability_kendall(same) == float(np.float64(1.0)) or abs(
+            rank_stability_kendall(same) - 1.0
+        ) < 1e-12
 
     def test_reversed_rankings_give_minus_one(self) -> None:
         alternating = np.array([

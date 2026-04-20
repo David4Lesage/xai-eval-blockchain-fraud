@@ -74,13 +74,14 @@ def lipschitz_stability(
 
 
 def rank_stability_kendall(explanations: NDArray[np.float64]) -> float:
-    """Mean Kendall τ between feature rankings of neighboring instances.
+    """Mean Kendall τ between the feature rankings of all instance pairs.
 
-    Computes the pairwise Kendall τ correlation between consecutive rows of
-    ``explanations`` (after ranking features by absolute value). Consecutive
-    rows are assumed to be ordered so that neighbors in input space are also
-    neighbors in the array; for independent samples, shuffle beforehand is
-    not required because we average over all consecutive pairs.
+    For every pair of rows ``(i, j)`` with ``i < j``, compute the Kendall τ
+    correlation between the rank vectors of ``|explanations[i]|`` and
+    ``|explanations[j]|``. A single τ is then averaged across all valid
+    pairs. A value close to 1 indicates that the explanation method
+    consistently identifies the same features as most important across the
+    instance set.
 
     Parameters
     ----------
@@ -90,18 +91,22 @@ def rank_stability_kendall(explanations: NDArray[np.float64]) -> float:
     Returns
     -------
     float
-        Mean τ in ``[-1, 1]``. Higher is better.
+        Mean τ in ``[-1, 1]``. Higher is better. Returns 1.0 when fewer
+        than two instances are provided (matching the reference
+        implementation).
     """
-    if len(explanations) < 2:
-        return 0.0
+    n = len(explanations)
+    if n < 2:
+        return 1.0
     taus: list[float] = []
-    for i in range(len(explanations) - 1):
-        r1 = np.argsort(-np.abs(explanations[i]))
-        r2 = np.argsort(-np.abs(explanations[i + 1]))
-        tau, _ = kendalltau(r1, r2)
-        if not np.isnan(tau):
-            taus.append(float(tau))
-    return float(np.mean(taus)) if taus else 0.0
+    for i in range(n):
+        for j in range(i + 1, n):
+            rank_i = np.argsort(np.argsort(-np.abs(explanations[i])))
+            rank_j = np.argsort(np.argsort(-np.abs(explanations[j])))
+            tau, _ = kendalltau(rank_i, rank_j)
+            if not np.isnan(tau):
+                taus.append(float(tau))
+    return float(np.mean(taus)) if taus else 1.0
 
 
 def cov_bootstrap(
